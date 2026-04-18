@@ -1,106 +1,131 @@
 import streamlit as st
-import pandas as pd
 import json
 import os
 
-# फाइल सेटअप (डेटा सेव करने के लिए)
+# --- डेटा हैंडलिंग ---
 DATA_FILE = "app_data.json"
-if not os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "w") as f:
-        json.dump({"courses": {}, "users": {}}, f)
 
 def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"courses": {}, "users": {"admin": "admin123"}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=4)
+
+# --- ऐप स्टेट मैनेजमेंट (Session State) ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_role = None  # 'admin' or 'student'
+    st.session_state.username = ""
 
 # UI Setup
-st.set_page_config(page_title="Student Learning Program", layout="wide")
-st.title("🎓 Student Learning Portal")
-
+st.set_page_config(page_title="Learning Portal", layout="wide")
 data = load_data()
 courses_list = ["IIOT", "IR&DMT", "PLUMBER"]
 
-# Sidebar - Login/Registration
-menu = ["Login", "Register", "Admin Panel"]
-choice = st.sidebar.selectbox("Menu", menu)
+# --- SIDEBAR LOGOUT ---
+if st.session_state.logged_in:
+    st.sidebar.write(f"👤 यूजर: **{st.session_state.username}**")
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.user_role = None
+        st.rerun()
 
-# --- USER REGISTRATION ---
-if choice == "Register":
-    st.subheader("Create New Account")
-    new_user = st.text_input("Username")
-    new_pass = st.text_input("Password", type='password')
-    if st.button("Signup"):
-        data["users"][new_user] = new_pass
-        save_data(data)
-        st.success("Account Created! Please Login.")
-
-# --- ADMIN PANEL (Manage Content) ---
-elif choice == "Admin Panel":
-    st.subheader("🔒 Admin Access Only")
-    admin_pass = st.text_input("Admin Password", type='password')
+# --- मुख्य लॉजिक ---
+if not st.session_state.logged_in:
+    tab1, tab2 = st.tabs(["Login", "Register"])
     
-    if admin_pass == "admin123": # आपका सीक्रेट पासवर्ड
-        st.success("Welcome, Admin!")
+    with tab1:
+        st.subheader("Login")
+        user_input = st.text_input("Username", key="login_user")
+        pass_input = st.text_input("Password", type="password", key="login_pass")
         
-        op = st.radio("Action", ["Upload Content", "Delete Content"])
-        
-        if op == "Upload Content":
-            course = st.selectbox("Select Course", courses_list)
-            cat = st.selectbox("Category", ["Theory Video", "Practical Video", "Software Video", "Notes PDF", "PYQ", "MCQ"])
-            title = st.text_input("Title (e.g. Lesson 1)")
-            link = st.text_input("Link / URL")
-            
-            if st.button("Add to Portal"):
-                if course not in data["courses"]: data["courses"][course] = {}
-                if cat not in data["courses"][course]: data["courses"][course][cat] = []
-                
-                data["courses"][course][cat].append({"title": title, "link": link})
-                save_data(data)
-                st.info(f"Added {title} to {course}")
-
-        elif op == "Delete Content":
-            # डिलीट करने का लॉजिक यहाँ आएगा
-            st.warning("Select items from data file to remove.")
-
-# --- USER LOGIN & STUDY AREA ---
-elif choice == "Login":
-    user = st.sidebar.text_input("User Name")
-    pwd = st.sidebar.text_input("Password", type='password')
-    
-    if user in data["users"] and data["users"][user] == pwd:
-        st.sidebar.success(f"Logged in as {user}")
-        
-        selected_course = st.selectbox("Choose Your Course", courses_list)
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.write("### 📚 Study Sections")
-            mode = st.radio("Go to:", ["Theory", "Practical", "Software", "Notes", "PYQ", "MCQ"])
-        
-        with col2:
-            st.write(f"### {mode} Content")
-            map_cat = {
-                "Theory": "Theory Video", "Practical": "Practical Video", 
-                "Software": "Software Video", "Notes": "Notes PDF", 
-                "PYQ": "PYQ", "MCQ": "MCQ"
-            }
-            cat_key = map_cat[mode]
-            
-            if selected_course in data["courses"] and cat_key in data["courses"][selected_course]:
-                items = data["courses"][selected_course][cat_key]
-                for item in items:
-                    st.markdown(f"✅ **{item['title']}**")
-                    if "Video" in cat_key:
-                        st.video(item['link']) # YouTube या Drive लिंक
-                    else:
-                        st.link_button(f"Open {cat_key}", item['link'])
+        if st.button("Login"):
+            if user_input == "admin" and pass_input == "admin123":
+                st.session_state.logged_in = True
+                st.session_state.user_role = "admin"
+                st.session_state.username = "Admin"
+                st.rerun()
+            elif user_input in data["users"] and data["users"][user_input] == pass_input:
+                st.session_state.logged_in = True
+                st.session_state.user_role = "student"
+                st.session_state.username = user_input
+                st.rerun()
             else:
-                st.info("No content uploaded yet by Admin.")
-    else:
-        st.warning("Please enter correct Username and Password.")
+                st.error("गलत यूजरनेम या पासवर्ड")
+
+    with tab2:
+        st.subheader("New Student Registration")
+        reg_user = st.text_input("Choose Username", key="reg_user")
+        reg_pass = st.text_input("Choose Password", type="password", key="reg_pass")
+        if st.button("Register"):
+            if reg_user in data["users"]:
+                st.warning("यह यूजरनेम पहले से मौजूद है")
+            elif reg_user and reg_pass:
+                data["users"][reg_user] = reg_pass
+                save_data(data)
+                st.success("रजिस्ट्रेशन सफल! अब लॉगिन करें।")
+            else:
+                st.error("दोनों फील्ड भरना जरूरी है")
+
+# --- एडमिन पैनल (ADMIN VIEW) ---
+elif st.session_state.user_role == "admin":
+    st.title("🛡️ Admin Dashboard")
+    action = st.radio("चुनें:", ["Content Upload", "Delete Content", "User List"])
+    
+    if action == "Content Upload":
+        course = st.selectbox("Course", courses_list)
+        cat = st.selectbox("Category", ["Theory Video", "Practical Video", "Software Video", "Notes PDF", "PYQ", "MCQ"])
+        title = st.text_input("Title")
+        link = st.text_input("Link (YouTube/Google Drive)")
+        
+        if st.button("Publish Content"):
+            if course not in data["courses"]: data["courses"][course] = {}
+            if cat not in data["courses"][course]: data["courses"][course][cat] = []
+            data["courses"][course][cat].append({"title": title, "link": link})
+            save_data(data)
+            st.success(f"✅ {title} अपलोड हो गया!")
+
+    elif action == "Delete Content":
+        st.info("यहाँ से आप कंटेंट हटा सकते हैं।")
+        course_del = st.selectbox("Course to manage", list(data["courses"].keys()))
+        if course_del:
+            cat_del = st.selectbox("Category to manage", list(data["courses"][course_del].keys()))
+            items = data["courses"][course_del][cat_del]
+            for idx, item in enumerate(items):
+                col1, col2 = st.columns([4, 1])
+                col1.write(item['title'])
+                if col2.button("Delete", key=f"del_{idx}"):
+                    data["courses"][course_del][cat_del].pop(idx)
+                    save_data(data)
+                    st.rerun()
+
+# --- स्टूडेंट पोर्टल (STUDENT VIEW) ---
+elif st.session_state.user_role == "student":
+    st.title(f"👋 Welcome, {st.session_state.username}")
+    selected_course = st.selectbox("अपना कोर्स चुनें", courses_list)
+    
+    tab_theory, tab_pract, tab_soft, tab_notes, tab_pyq, tab_mcq = st.tabs(["Theory", "Practical", "Software", "Notes", "PYQ", "MCQ"])
+    
+    tabs = {
+        "Theory Video": tab_theory, "Practical Video": tab_pract, 
+        "Software Video": tab_soft, "Notes PDF": tab_notes, 
+        "PYQ": tab_pyq, "MCQ": tab_mcq
+    }
+
+    for cat_name, tab_obj in tabs.items():
+        with tab_obj:
+            if selected_course in data["courses"] and cat_name in data["courses"][selected_course]:
+                items = data["courses"][selected_course][cat_name]
+                for item in items:
+                    with st.expander(item['title']):
+                        if "Video" in cat_name:
+                            st.video(item['link'])
+                        else:
+                            st.link_button("View / Download", item['link'])
+            else:
+                st.info("फिलहाल यहाँ कोई कंटेंट नहीं है।")
 
